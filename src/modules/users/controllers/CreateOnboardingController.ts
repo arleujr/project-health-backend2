@@ -1,126 +1,124 @@
-import { prisma } from '../../../shared/infra/database/prisma.js';
-import { AppError } from '../../../shared/errors/AppError.js';
+import type {
+  FastifyReply,
+  FastifyRequest,
+} from 'fastify';
 
-interface SubmitClientAnamnesisInput {
-  userId: string;
-  weight: number;
-  height: number;
-  bodyFatPercent?: number;
-  medicalConditions: string;
-  medications: string;
-  routine: string;
-  injuries?: string;
-  objectives?: string;
-}
+import { z } from 'zod';
 
-export class SubmitClientAnamnesisService {
-  async execute({
-    userId,
-    weight,
-    height,
-    bodyFatPercent,
-    medicalConditions,
-    medications,
-    routine,
-    injuries,
-    objectives,
-  }: SubmitClientAnamnesisInput) {
-    const normalizedHeight =
-      height > 3 ? height / 100 : height;
+import { SubmitClientAnamnesisService } from '../services/SubmitClientAnamnesisService.js';
 
-    if (normalizedHeight < 1 || normalizedHeight > 2.5) {
-      throw new AppError(
-        'A altura informada é inválida.',
-        400,
-      );
+const requiredNumber = z.preprocess(
+  (value) => {
+    if (
+      value === '' ||
+      value === null ||
+      value === undefined
+    ) {
+      return undefined;
     }
 
-    const user = await prisma.user.findUnique({
-      where: {
-        id: userId,
-      },
-      select: {
-        id: true,
-        role: true,
-      },
+    return Number(value);
+  },
+  z
+    .number({
+      required_error: 'Este campo é obrigatório.',
+      invalid_type_error: 'Informe um número válido.',
+    })
+    .finite(),
+);
+
+const optionalNumber = z.preprocess(
+  (value) => {
+    if (
+      value === '' ||
+      value === null ||
+      value === undefined
+    ) {
+      return undefined;
+    }
+
+    return Number(value);
+  },
+  z.number().finite().optional(),
+);
+
+const submitAnamnesisSchema = z.object({
+  weight: requiredNumber.refine(
+    (value) => value >= 20 && value <= 400,
+    'O peso deve estar entre 20 e 400 kg.',
+  ),
+
+  height: requiredNumber.refine(
+    (value) => value >= 1 && value <= 250,
+    'Informe a altura em metros ou centímetros.',
+  ),
+
+  bodyFat: optionalNumber.refine(
+    (value) =>
+      value === undefined ||
+      (value >= 0 && value <= 70),
+    'O percentual de gordura deve estar entre 0 e 70.',
+  ),
+
+  medicalConditions: z
+    .string()
+    .trim()
+    .max(5000)
+    .default(''),
+
+  medications: z
+    .string()
+    .trim()
+    .max(5000)
+    .default(''),
+
+  routine: z
+    .string()
+    .trim()
+    .max(5000)
+    .default(''),
+
+  injuries: z
+    .string()
+    .trim()
+    .max(5000)
+    .optional()
+    .default(''),
+
+  objectives: z
+    .string()
+    .trim()
+    .max(5000)
+    .optional()
+    .default(''),
+});
+
+export class CreateOnboardingController {
+  public handle = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ) => {
+    const userId = request.user.sub;
+
+    const body = submitAnamnesisSchema.parse(
+      request.body,
+    );
+
+    const service =
+      new SubmitClientAnamnesisService();
+
+    const result = await service.execute({
+      userId,
+      weight: body.weight,
+      height: body.height,
+      bodyFatPercent: body.bodyFat,
+      medicalConditions: body.medicalConditions,
+      medications: body.medications,
+      routine: body.routine,
+      injuries: body.injuries,
+      objectives: body.objectives,
     });
 
-    if (!user) {
-      throw new AppError(
-        'Usuário não encontrado.',
-        404,
-      );
-    }
-
-    if (user.role !== 'CLIENT') {
-      throw new AppError(
-        'Somente clientes podem enviar a própria anamnese.',
-        403,
-      );
-    }
-
-    return prisma.$transaction(async (transaction) => {
-      const anamnesis = await transaction.anamnesis.upsert({
-        where: {
-          userId,
-        },
-
-        update: {
-          medicalRecord: {
-            medicalConditions,
-            medications,
-            routine,
-          },
-
-          injuries: {
-            description: injuries || null,
-          },
-
-          objectives: {
-            primary: objectives || null,
-          },
-        },
-
-        create: {
-          userId,
-
-          medicalRecord: {
-            medicalConditions,
-            medications,
-            routine,
-          },
-
-          injuries: {
-            description: injuries || null,
-          },
-
-          objectives: {
-            primary: objectives || null,
-          },
-        },
-      });
-
-      const biometric = await transaction.biometricHistory.create({
-        data: {
-          userId,
-          weight,
-          height: normalizedHeight,
-          bodyFatPercent,
-          measuredAt: new Date(),
-        },
-      });
-
-      return {
-        message: 'Anamnese registrada com sucesso.',
-        anamnesis: {
-          id: anamnesis.id,
-          updatedAt: anamnesis.updatedAt,
-        },
-        biometric: {
-          id: biometric.id,
-          measuredAt: biometric.measuredAt,
-        },
-      };
-    });
-  }
+    return reply.status(201).send(result);
+  };
 }
