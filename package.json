@@ -6,12 +6,12 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/shared/infra/http/server.ts",
-    "build": "prisma generate && tsc",
+    "build": "npx prisma generate && tsc",
     "start": "node dist/shared/infra/http/server.js",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate:deploy": "prisma migrate deploy",
-    "prisma:studio": "prisma studio",
-    "seed": "prisma db seed",
+    "prisma:generate": "npx prisma generate",
+    "prisma:migrate:deploy": "npx prisma migrate deploy",
+    "prisma:studio": "npx prisma studio",
+    "seed": "npx prisma db seed",
     "check": "npm run build"
   },
   "dependencies": {
@@ -31,11 +31,11 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20.0.0",
     "pino-pretty": "^13.1.3",
+    "prisma": "5.22.0",
     "tsx": "^4.22.4",
     "typescript": "^5.0.0"
   },
