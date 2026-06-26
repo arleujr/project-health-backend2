@@ -26,6 +26,23 @@ enum OnboardingStage {
   SUSPENDED
 }
 
+enum AccessGrantStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum AccessGrantSource {
+  ADMIN
+  PROFESSIONAL
+  HOTMART
+  STRIPE
+  ASAAS
+  MERCADO_PAGO
+  SYSTEM
+}
+
 enum SubscriptionStatus {
   ACTIVE
   CANCELED
@@ -88,16 +105,16 @@ model LoginOtp {
 // ==========================================
 
 model Lead {
-  id               String       @id @default(uuid())
-  whatsappId       String       @unique @map("whatsapp_id")
+  id               String     @id @default(uuid())
+  whatsappId       String     @unique @map("whatsapp_id")
   name             String?
-  phone            String       @unique
-  status           LeadStatus   @default(NEW)
-  screeningAnswers Json?        @map("screening_answers")
-  purchaseScore    Float?       @map("purchase_score")
-  metaAdId         String?      @map("meta_ad_id")
-  createdAt        DateTime     @default(now()) @map("created_at")
-  updatedAt        DateTime     @updatedAt @map("updated_at")
+  phone            String     @unique
+  status           LeadStatus @default(NEW)
+  screeningAnswers Json?      @map("screening_answers")
+  purchaseScore    Float?     @map("purchase_score")
+  metaAdId         String?    @map("meta_ad_id")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
 
   @@index([phone])
   @@index([purchaseScore])
@@ -109,45 +126,72 @@ model Lead {
 // ==========================================
 
 model User {
-  id                  String          @id @default(uuid())
-  name                String?
-  email               String?         @unique
-  password            String?
-  phone               String?         @unique
-  cpf                 String?         @unique
-  role                UserRole        @default(CLIENT)
-  isOnboardingDone    Boolean         @default(false) @map("is_onboarding_done")
-  onboardingStage     OnboardingStage @default(BASIC_PROFILE_PENDING) @map("onboarding_stage")
-  primaryGoal         String?         @map("primary_goal")
-  restrictionSummary  String?         @db.Text @map("restriction_summary")
-  countryCode         String          @default("BR") @map("country_code")
-  locale              String          @default("pt-BR")
-  timezone            String          @default("America/Sao_Paulo")
-  termsAcceptedAt     DateTime?       @map("terms_accepted_at")
-  privacyAcceptedAt   DateTime?       @map("privacy_accepted_at")
-  gatewayCustomerId   String?         @unique @map("gateway_customer_id")
-  createdAt           DateTime        @default(now()) @map("created_at")
-  updatedAt           DateTime        @updatedAt @map("updated_at")
+  id                 String          @id @default(uuid())
+  name               String?
+  email              String?         @unique
+  password           String?
+  phone              String?         @unique
+  cpf                String?         @unique
+  role               UserRole        @default(CLIENT)
+  isOnboardingDone   Boolean         @default(false) @map("is_onboarding_done")
+  onboardingStage    OnboardingStage @default(BASIC_PROFILE_PENDING) @map("onboarding_stage")
+  primaryGoal        String?         @map("primary_goal")
+  restrictionSummary String?         @map("restriction_summary") @db.Text
+  countryCode        String          @default("BR") @map("country_code")
+  locale             String          @default("pt-BR")
+  timezone           String          @default("America/Sao_Paulo")
+  termsAcceptedAt    DateTime?       @map("terms_accepted_at")
+  privacyAcceptedAt  DateTime?       @map("privacy_accepted_at")
+  gatewayCustomerId  String?         @unique @map("gateway_customer_id")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
 
-  anamnesis           Anamnesis?
-  subscription        Subscription?
+  anamnesis    Anamnesis?
+  subscription Subscription?
 
-  clientPlans         Plan[]          @relation("ClientPlans")
-  nutriPlans          Plan[]          @relation("NutriPlans")
-  efiPlans            Plan[]          @relation("EfiPlans")
+  clientPlans Plan[] @relation("ClientPlans")
+  nutriPlans  Plan[] @relation("NutriPlans")
+  efiPlans    Plan[] @relation("EfiPlans")
 
-  createdPlans        Plan[]          @relation("PlanCreator")
-  updatedPlans        Plan[]          @relation("PlanUpdater")
+  createdPlans Plan[] @relation("PlanCreator")
+  updatedPlans Plan[] @relation("PlanUpdater")
 
-  clientTickets       SupportTicket[] @relation("ClientTickets")
-  agentTickets        SupportTicket[] @relation("AgentTickets")
+  clientTickets SupportTicket[] @relation("ClientTickets")
+  agentTickets  SupportTicket[] @relation("AgentTickets")
 
   biometrics          BiometricHistory[]
   workoutLogs         WorkoutExecutionLog[]
   mlInsights          MlPredictiveInsight[]
   telemetries         SmartwatchDailyTelemetry[]
+  accessGrants        AccessGrant[]              @relation("AccessGrantUser")
+  createdAccessGrants AccessGrant[]              @relation("AccessGrantCreator")
 
   @@map("users")
+}
+
+model AccessGrant {
+  id                String            @id @default(uuid())
+  email             String
+  phone             String?
+  cpf               String?
+  source            AccessGrantSource
+  status            AccessGrantStatus @default(PENDING)
+  externalReference String?           @map("external_reference")
+  createdById       String?           @map("created_by_id")
+  userId            String            @map("user_id")
+  expiresAt         DateTime?         @map("expires_at")
+  consumedAt        DateTime?         @map("consumed_at")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  user      User  @relation("AccessGrantUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("AccessGrantCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([email, status])
+  @@index([userId, status])
+  @@index([createdById])
+  @@index([externalReference])
+  @@map("access_grants")
 }
 
 model Anamnesis {
@@ -159,22 +203,22 @@ model Anamnesis {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("anamneses")
 }
 
 model Subscription {
-  id          String             @id @default(uuid())
-  userId      String             @unique @map("user_id")
-  status      SubscriptionStatus @default(PAST_DUE)
-  tier        PlanTier           @default(PLUS)
-  period      BillingPeriod      @default(MONTHLY)
-  renewedAt   DateTime           @map("renewed_at")
-  createdAt   DateTime           @default(now()) @map("created_at")
-  updatedAt   DateTime           @updatedAt @map("updated_at")
+  id        String             @id @default(uuid())
+  userId    String             @unique @map("user_id")
+  status    SubscriptionStatus @default(PAST_DUE)
+  tier      PlanTier           @default(PLUS)
+  period    BillingPeriod      @default(MONTHLY)
+  renewedAt DateTime           @map("renewed_at")
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
 
-  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("subscriptions")
 }
@@ -195,15 +239,15 @@ model Plan {
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
 
-  client      User       @relation("ClientPlans", fields: [clientId], references: [id], onDelete: Restrict)
-  nutri       User?      @relation("NutriPlans", fields: [nutriId], references: [id], onDelete: SetNull)
-  efi         User?      @relation("EfiPlans", fields: [efiId], references: [id], onDelete: SetNull)
+  client User  @relation("ClientPlans", fields: [clientId], references: [id], onDelete: Restrict)
+  nutri  User? @relation("NutriPlans", fields: [nutriId], references: [id], onDelete: SetNull)
+  efi    User? @relation("EfiPlans", fields: [efiId], references: [id], onDelete: SetNull)
 
-  createdBy   User?      @relation("PlanCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy   User?      @relation("PlanUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdBy User? @relation("PlanCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User? @relation("PlanUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  diets       Diet[]
-  workouts    WorkoutRoutine[]
+  diets    Diet[]
+  workouts WorkoutRoutine[]
 
   @@index([clientId, status])
   @@map("plans")
@@ -218,7 +262,7 @@ model Diet {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  plan        Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   @@map("diets")
 }
@@ -233,7 +277,7 @@ model WorkoutRoutine {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  plan         Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   @@map("workout_routines")
 }
@@ -255,7 +299,7 @@ model BiometricHistory {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, measuredAt])
   @@map("biometric_histories")
@@ -272,7 +316,7 @@ model SmartwatchDailyTelemetry {
   activeCalories    Float    @default(0.0) @map("active_calories")
   createdAt         DateTime @default(now()) @map("created_at")
 
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
   @@index([userId, date])
@@ -293,7 +337,7 @@ model WorkoutExecutionLog {
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, executedAt])
   @@map("workout_execution_logs")
@@ -310,9 +354,9 @@ enum TicketStatus {
 }
 
 enum TicketCategory {
-  CRITICAL    // 🚨 Short SLA (e.g., 4h) - Pain, Churn Risk
-  ATTENTION   // 🟡 Medium SLA (e.g., 12h) - Anamnesis review, Diet adjustment
-  ROUTINE     // 🟢 Long SLA (e.g., 48h) - General questions
+  CRITICAL // 🚨 Short SLA (e.g., 4h) - Pain, Churn Risk
+  ATTENTION // 🟡 Medium SLA (e.g., 12h) - Anamnesis review, Diet adjustment
+  ROUTINE // 🟢 Long SLA (e.g., 48h) - General questions
 }
 
 model SupportTicket {
@@ -328,8 +372,8 @@ model SupportTicket {
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
-  client       User           @relation("ClientTickets", fields: [clientId], references: [id], onDelete: Cascade)
-  agent        User?          @relation("AgentTickets", fields: [agentId], references: [id], onDelete: SetNull)
+  client User  @relation("ClientTickets", fields: [clientId], references: [id], onDelete: Cascade)
+  agent  User? @relation("AgentTickets", fields: [agentId], references: [id], onDelete: SetNull)
 
   @@index([status, category])
   @@index([clientId])
@@ -349,7 +393,7 @@ model MlPredictiveInsight {
   generatedAt     DateTime          @default(now()) @map("generated_at")
   expiresAt       DateTime?         @map("expires_at")
 
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isActive])
   @@map("ml_predictive_insights")

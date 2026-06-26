@@ -13,7 +13,7 @@ import { CreateDietPrescriptionController } from '../../../plans/controllers/Cre
 
 import { ensureAuthenticated } from '../../../../shared/infra/http/middlewares/ensureAuthenticated.js';
 import { ensureRole } from '../../../../shared/infra/http/middlewares/ensureRole.js';
-
+import { GrantClientAccessController } from '../controllers/GrantClientAccessController.js';
 export async function onboardingRouter(
   app: FastifyInstance,
 ): Promise<void> {
@@ -41,6 +41,9 @@ export async function onboardingRouter(
   const createDietPrescriptionController =
     new CreateDietPrescriptionController();
 
+  const grantClientAccessController =
+    new GrantClientAccessController();
+
   app.post(
     '/register',
     {
@@ -62,6 +65,17 @@ export async function onboardingRouter(
     },
     completeBasicProfileController.handle,
   );
+  
+  app.post(
+    '/access-grants/manual',
+  {
+    onRequest: [ensureAuthenticated],
+    preHandler: [
+      ensureRole(['ADMIN', 'NUTRI', 'EFI']),
+    ],
+  },
+  grantClientAccessController.handle,
+);
 
   app.post(
     '/anamnesis',

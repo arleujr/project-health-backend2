@@ -112,16 +112,45 @@ export class OtpService {
       throw new AppError('Código inválido ou expirado.', 401);
     }
 
-    // Retrieve user details
+    // Retrieve user details with updated select
     const user = await prisma.user.findUnique({
       where: { email: normalized },
-      select: { id: true, name: true, email: true, role: true, isOnboardingDone: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isOnboardingDone: true,
+        onboardingStage: true,
+      },
     });
 
     if (!user) throw new AppError('Usuário não encontrado.', 404);
 
-    // Mark OTP as consumed
-    await prisma.loginOtp.update({ where: { id: otp.id }, data: { consumedAt: new Date() } });
+    // Mark OTP as consumed and update access grants in a transaction
+    const consumedAt = new Date();
+
+    await prisma.$transaction([
+      prisma.loginOtp.update({
+        where: {
+          id: otp.id,
+        },
+        data: {
+          consumedAt,
+        },
+      }),
+
+      prisma.accessGrant.updateMany({
+        where: {
+          userId: user.id,
+          status: 'PENDING',
+        },
+        data: {
+          status: 'ACCEPTED',
+          consumedAt,
+        },
+      }),
+    ]);
 
     return user;
   }
