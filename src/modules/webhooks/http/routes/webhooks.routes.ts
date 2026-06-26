@@ -1,27 +1,59 @@
-import { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { Queue } from 'bullmq';
 import { z } from 'zod';
 
-// Decoupled clean connection blueprint mapping for standalone Redis instance management
-const whatsappQueue = new Queue('WhatsAppIncoming', {
-  connection: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: Number(process.env.REDIS_PORT) || 6379,
-  },
+import { env } from '../../../../config/env.js';
+
+const whatsappWebhookSchema = z.object({
+  messageId: z.string().min(1),
+  sender: z.string().min(1),
+  payload: z.record(z.string(), z.unknown()),
 });
 
-export async function webhooksRouter(fastify: FastifyInstance) {
-  fastify.post('/whatsapp', async (request, reply) => {
-    const whatsappWebhookSchema = z.object({
-      messageId: z.string(),
-      sender: z.string(),
-      payload: z.record(z.string(), z.any()), // Corrected strict dynamic map key-value tracking matrix
+let whatsappQueue: Queue | null = null;
+
+function getWhatsappQueue(): Queue | null {
+  if (!env.REDIS_URL) {
+    return null;
+  }
+
+  if (!whatsappQueue) {
+    whatsappQueue = new Queue('WhatsAppIncoming', {
+      connection: {
+        url: env.REDIS_URL,
+        maxRetriesPerRequest: 1,
+      },
     });
 
+    whatsappQueue.on('error', (error) => {
+      console.error('WhatsApp queue error:', error);
+    });
+  }
+
+  return whatsappQueue;
+}
+
+export async function webhooksRouter(
+  fastify: FastifyInstance,
+): Promise<void> {
+  fastify.post('/whatsapp', async (request, reply) => {
     const validatedData = whatsappWebhookSchema.parse(request.body);
 
-    // Push heavy background task into BullMQ Redis cluster line
-    await whatsappQueue.add(
+    const queue = getWhatsappQueue();
+
+    if (!queue) {
+      fastify.log.warn(
+        'Webhook received, but Redis is not configured. Message was not queued.',
+      );
+
+      return reply.status(503).send({
+        received: false,
+        error: 'QUEUE_UNAVAILABLE',
+        message: 'O processamento de mensagens está temporariamente indisponível.',
+      });
+    }
+
+    await queue.add(
       'process_message',
       {
         id: validatedData.messageId,
@@ -30,11 +62,25 @@ export async function webhooksRouter(fastify: FastifyInstance) {
       },
       {
         attempts: 3,
-        backoff: { type: 'exponential', delay: 1000 },
-      }
+        backoff: {
+          type: 'exponential',
+          delay: 1000,
+        },
+        removeOnComplete: 100,
+        removeOnFail: 500,
+      },
     );
 
-    // Blazing-fast acknowledgment back to Meta Servers (Sub 20ms response loop)
-    return reply.status(200).send({ received: true });
+    return reply.status(202).send({
+      received: true,
+      queued: true,
+    });
+  });
+
+  fastify.addHook('onClose', async () => {
+    if (whatsappQueue) {
+      await whatsappQueue.close();
+      whatsappQueue = null;
+    }
   });
 }
