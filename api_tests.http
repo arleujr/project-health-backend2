@@ -1,0 +1,60 @@
+
+@baseUrl = https://projeto-health.onrender.com
+
+
+### 1. Simular Webhook de Pagamento (Liberar CPF)
+POST {{baseUrl}}/v1/onboarding/webhook-payment
+Content-Type: application/json
+
+{
+  "cpf": "12345678901"
+}
+
+###
+
+### Teste 1: Conversa Comum (Sem chamar o Banco de Dados)
+POST {{baseUrl}}/v1/copilot/chat
+Content-Type: application/json
+
+{
+  "message": "Oi! Quem é você e o que você pode fazer por mim?",
+  "userRole": "Nutricionista",
+  "userName": "João"
+}
+
+###
+
+### Teste 2: Ativando a Função Inteligente (Consulta Real no Prisma)
+POST {{baseUrl}}/v1/copilot/chat
+Content-Type: application/json
+
+{
+  "message": "Quantos pacientes ativos nós temos cadastrados no sistema agora?",
+  "userRole": "Nutricionista",
+  "userName": "João"
+}
+
+###
+
+### 2. Simular Aluno Completando o Cadastro
+POST {{baseUrl}}/v1/onboarding/register
+Content-Type: application/json
+
+{
+  "cpf": "12345678901",
+  "name": "Aluno Arleu Tech",
+  "email": "arleu@teste.com",
+  "phone": "32999999999",
+  "password": "senha_secreta_123"
+}
+
+###
+
+### 3. Simular Aluno Fazendo Login Real
+POST {{baseUrl}}/v1/onboarding/sessions
+Content-Type: application/json
+
+{
+  "email": "arleu@teste.com",
+  "password": "senha_secreta_123"
+}

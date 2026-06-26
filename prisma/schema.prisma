@@ -1,0 +1,340 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  ADMIN
+  CLIENT
+  NUTRI
+  EFI
+  ASSISTANT
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+}
+
+enum PlanTier {
+  LIGHT
+  PLUS
+  PREMIUM
+}
+
+enum BillingPeriod {
+  MONTHLY
+  ANNUAL
+}
+
+enum PlanStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum InsightType {
+  CHURN_RISK
+  METABOLIC_PLATEAU
+  OVERTRAINING_ALERT
+  HIGH_PURCHASE_INTENT
+}
+
+enum InsightConfidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum LeadStatus {
+  NEW
+  SCREENING
+  CONVERTED
+  LOST
+}
+
+
+model LoginOtp {
+  id         String    @id @default(uuid())
+  email      String
+  codeHash   String    @map("code_hash")
+  attempts   Int       @default(0)
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([email, createdAt])
+  @@index([expiresAt])
+  @@map("login_otps")
+}
+
+// ==========================================
+// 1. MÓDULO DE CAPTAÇÃO E LEADS (PILAR 1)
+// ==========================================
+
+model Lead {
+  id               String       @id @default(uuid())
+  whatsappId       String       @unique @map("whatsapp_id")
+  name             String?
+  phone            String       @unique
+  status           LeadStatus   @default(NEW)
+  screeningAnswers Json?        @map("screening_answers")
+  purchaseScore    Float?       @map("purchase_score")
+  metaAdId         String?      @map("meta_ad_id")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  @@index([phone])
+  @@index([purchaseScore])
+  @@map("leads")
+}
+
+// ==========================================
+// 2. MÓDULO DE USUÁRIOS E ASSINATURAS
+// ==========================================
+
+model User {
+  id                String        @id @default(uuid())
+  name              String?
+  email             String?       @unique
+  password          String?
+  phone             String?       @unique
+  cpf               String        @unique
+  role              UserRole      @default(CLIENT)
+  isOnboardingDone  Boolean       @default(false) @map("is_onboarding_done")
+  gatewayCustomerId String?       @unique @map("gateway_customer_id")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  
+  anamnesis         Anamnesis?
+  subscription      Subscription?
+  
+  clientPlans       Plan[]        @relation("ClientPlans")
+  nutriPlans        Plan[]        @relation("NutriPlans")
+  efiPlans          Plan[]        @relation("EfiPlans")
+  
+  createdPlans      Plan[]        @relation("PlanCreator")
+  updatedPlans      Plan[]        @relation("PlanUpdater")
+  
+  clientTickets     SupportTicket[] @relation("ClientTickets")
+  agentTickets      SupportTicket[] @relation("AgentTickets")
+
+  biometrics        BiometricHistory[]
+  workoutLogs       WorkoutExecutionLog[]
+  mlInsights        MlPredictiveInsight[]
+  telemetries       SmartwatchDailyTelemetry[]
+
+  @@map("users")
+}
+
+model Anamnesis {
+  id            String   @id @default(uuid())
+  userId        String   @unique @map("user_id")
+  medicalRecord Json     @map("medical_record")
+  injuries      Json
+  objectives    Json
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("anamneses")
+}
+
+model Subscription {
+  id          String             @id @default(uuid())
+  userId      String             @unique @map("user_id")
+  status      SubscriptionStatus @default(PAST_DUE)
+  tier        PlanTier           @default(PLUS)
+  period      BillingPeriod      @default(MONTHLY)
+  renewedAt   DateTime           @map("renewed_at")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+// ==========================================
+// 3. MÓDULO DE ENTREGA DE PLANOS (DIETA + TREINO)
+// ==========================================
+
+model Plan {
+  id          String     @id @default(uuid())
+  clientId    String     @map("client_id")
+  nutriId     String?    @map("nutri_id")
+  efiId       String?    @map("efi_id")
+  createdById String?    @map("created_by_id")
+  updatedById String?    @map("updated_by_id")
+  status      PlanStatus @default(DRAFT)
+  activatedAt DateTime?  @map("activated_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  client      User       @relation("ClientPlans", fields: [clientId], references: [id], onDelete: Restrict)
+  nutri       User?      @relation("NutriPlans", fields: [nutriId], references: [id], onDelete: SetNull)
+  efi         User?      @relation("EfiPlans", fields: [efiId], references: [id], onDelete: SetNull)
+  
+  createdBy   User?      @relation("PlanCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy   User?      @relation("PlanUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  
+  diets       Diet[]
+  workouts    WorkoutRoutine[]
+
+  @@index([clientId, status])
+  @@map("plans")
+}
+
+model Diet {
+  id          String   @id @default(uuid())
+  planId      String   @map("plan_id")
+  title       String
+  dailyMacros Json     @map("daily_macros")
+  meals       Json
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  plan        Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@map("diets")
+}
+
+model WorkoutRoutine {
+  id           String   @id @default(uuid())
+  planId       String   @map("plan_id")
+  title        String
+  splitType    String   @map("split_type")
+  metEstimated Float    @default(4.5) @map("met_estimated")
+  exercises    Json
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  plan         Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@map("workout_routines")
+}
+
+// ==========================================
+// 4. MÓDULO DE TELEMETRIA, IOT E EVOLUÇÃO (PILAR 2)
+// ==========================================
+
+model BiometricHistory {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  weight          Float
+  height          Float
+  bodyFatPercent  Float?   @map("body_fat_percent")
+  leanMassKg      Float?   @map("lean_mass_kg")
+  anthropometry   Json?
+  evolutionPhotos Json?    @map("evolution_photos")
+  measuredAt      DateTime @map("measured_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, measuredAt])
+  @@map("biometric_histories")
+}
+
+model SmartwatchDailyTelemetry {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  date             DateTime @db.Date
+  hrv              Int?
+  rhr              Int?
+  sleepMinutesTotal Int?    @map("sleep_minutes_total")
+  stepsCount       Int      @default(0) @map("steps_count")
+  activeCalories   Float    @default(0.0) @map("active_calories")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+  @@map("smartwatch_daily_telemetry")
+}
+
+model WorkoutExecutionLog {
+  id                    String   @id @default(uuid())
+  userId                String   @map("user_id")
+  workoutRoutineId      String?  @map("workout_routine_id")
+  deviceSource          String   @map("device_source")
+  durationInMinutes     Int      @map("duration_in_minutes")
+  averageHeartRate      Int?     @map("average_heart_rate")
+  deviceCaloriesBurned  Float?   @map("device_calories_burned")
+  metCalculatedCalories Float    @map("met_calculated_calories")
+  rawData               Json     @map("raw_data")
+  executedAt            DateTime @map("executed_at")
+    createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, executedAt])
+  @@map("workout_execution_logs")
+}
+
+// ==========================================
+// 5. INTELIGÊNCIA ARTIFICIAL E SUPORTE (HELPDESK OTIMIZADO)
+// ==========================================
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum TicketCategory {
+  CRITICAL    // 🚨 SLA Curto (ex: 4h) - Dor, Risco de Churn
+  ATTENTION   // 🟡 SLA Médio (ex: 12h) - Avaliar anamnese, Ajuste de Dieta
+  ROUTINE     // 🟢 SLA Longo (ex: 48h) - Dúvidas gerais
+}
+
+model SupportTicket {
+  id           String         @id @default(uuid())
+  clientId     String         @map("client_id")
+  agentId      String?        @map("agent_id") // Quem está atendendo
+  title        String         // Resumo da notificação
+  description  String         @db.Text // Relato completo do paciente ou IA
+  answer       String?        @db.Text // Resposta do profissional
+  category     TicketCategory @default(ROUTINE)
+  status       TicketStatus   @default(OPEN)
+  slaExpiresAt DateTime       @map("sla_expires_at") // O Motor do SLA
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  client       User           @relation("ClientTickets", fields: [clientId], references: [id], onDelete: Cascade)
+  agent        User?          @relation("AgentTickets", fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([status, category])
+  @@index([clientId])
+  @@index([agentId])
+  @@map("support_tickets")
+}
+
+model MlPredictiveInsight {
+  id              String            @id @default(uuid())
+  userId          String            @map("user_id")
+  insightType     InsightType       @map("insight_type")
+  riskScore       Float             @map("risk_score")
+  confidenceLevel InsightConfidence @map("confidence_level")
+  recommendation  String            @db.Text
+  featuresUsed    Json              @map("features_used")
+  isActive        Boolean           @default(true) @map("is_active")
+  generatedAt     DateTime          @default(now()) @map("generated_at")
+  expiresAt       DateTime?         @map("expires_at")
+
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@map("ml_predictive_insights")
+}
+
