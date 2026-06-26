@@ -5,6 +5,7 @@ import { OtpService } from '../../services/OtpService.js';
 import { ensureAuthenticated } from '../../../../shared/infra/http/middlewares/ensureAuthenticated.js';
 import { prisma } from '../../../../shared/infra/database/prisma.js';
 
+// Schema for validating email input
 const emailSchema = z.object({
   email: z
     .string()
@@ -12,6 +13,7 @@ const emailSchema = z.object({
     .transform((value) => value.toLowerCase()),
 });
 
+// Schema for verifying OTP code along with email
 const verifySchema = emailSchema.extend({
   otpCode: z.string().regex(/^\d{6}$/),
 });
@@ -19,6 +21,7 @@ const verifySchema = emailSchema.extend({
 export async function authRoutes(app: FastifyInstance) {
   const otp = new OtpService();
 
+  // Route to request OTP
   app.post(
     '/request-otp',
     {
@@ -41,6 +44,7 @@ export async function authRoutes(app: FastifyInstance) {
     },
   );
 
+  // Route to verify OTP and issue JWT token
   app.post(
     '/verify-otp',
     {
@@ -69,6 +73,7 @@ export async function authRoutes(app: FastifyInstance) {
     },
   );
 
+  // Route to get authenticated user information
   app.get(
     '/me',
     {
@@ -85,6 +90,12 @@ export async function authRoutes(app: FastifyInstance) {
           email: true,
           role: true,
           isOnboardingDone: true,
+          // Added fields for onboarding and compliance tracking
+          onboardingStage: true,
+          primaryGoal: true,
+          restrictionSummary: true,
+          termsAcceptedAt: true,
+          privacyAcceptedAt: true,
         },
       });
     },

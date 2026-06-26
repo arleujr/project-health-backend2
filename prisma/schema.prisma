@@ -1,6 +1,6 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -14,6 +14,16 @@ enum UserRole {
   NUTRI
   EFI
   ASSISTANT
+}
+
+enum OnboardingStage {
+  ACCESS_GRANTED
+  BASIC_PROFILE_PENDING
+  CLINICAL_PROFILE_PENDING
+  READY_FOR_REVIEW
+  PLAN_IN_PROGRESS
+  ACTIVE_CARE
+  SUSPENDED
 }
 
 enum SubscriptionStatus {
@@ -59,7 +69,6 @@ enum LeadStatus {
   LOST
 }
 
-
 model LoginOtp {
   id         String    @id @default(uuid())
   email      String
@@ -75,7 +84,7 @@ model LoginOtp {
 }
 
 // ==========================================
-// 1. MÓDULO DE CAPTAÇÃO E LEADS (PILAR 1)
+// 1. LEADS
 // ==========================================
 
 model Lead {
@@ -96,39 +105,47 @@ model Lead {
 }
 
 // ==========================================
-// 2. MÓDULO DE USUÁRIOS E ASSINATURAS
+// 2. USERS & SUBSCRIPTIONS
 // ==========================================
 
 model User {
-  id                String        @id @default(uuid())
-  name              String?
-  email             String?       @unique
-  password          String?
-  phone             String?       @unique
-  cpf               String        @unique
-  role              UserRole      @default(CLIENT)
-  isOnboardingDone  Boolean       @default(false) @map("is_onboarding_done")
-  gatewayCustomerId String?       @unique @map("gateway_customer_id")
-  createdAt         DateTime      @default(now()) @map("created_at")
-  updatedAt         DateTime      @updatedAt @map("updated_at")
-  
-  anamnesis         Anamnesis?
-  subscription      Subscription?
-  
-  clientPlans       Plan[]        @relation("ClientPlans")
-  nutriPlans        Plan[]        @relation("NutriPlans")
-  efiPlans          Plan[]        @relation("EfiPlans")
-  
-  createdPlans      Plan[]        @relation("PlanCreator")
-  updatedPlans      Plan[]        @relation("PlanUpdater")
-  
-  clientTickets     SupportTicket[] @relation("ClientTickets")
-  agentTickets      SupportTicket[] @relation("AgentTickets")
+  id                  String          @id @default(uuid())
+  name                String?
+  email               String?         @unique
+  password            String?
+  phone               String?         @unique
+  cpf                 String?         @unique
+  role                UserRole        @default(CLIENT)
+  isOnboardingDone    Boolean         @default(false) @map("is_onboarding_done")
+  onboardingStage     OnboardingStage @default(BASIC_PROFILE_PENDING) @map("onboarding_stage")
+  primaryGoal         String?         @map("primary_goal")
+  restrictionSummary  String?         @db.Text @map("restriction_summary")
+  countryCode         String          @default("BR") @map("country_code")
+  locale              String          @default("pt-BR")
+  timezone            String          @default("America/Sao_Paulo")
+  termsAcceptedAt     DateTime?       @map("terms_accepted_at")
+  privacyAcceptedAt   DateTime?       @map("privacy_accepted_at")
+  gatewayCustomerId   String?         @unique @map("gateway_customer_id")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
 
-  biometrics        BiometricHistory[]
-  workoutLogs       WorkoutExecutionLog[]
-  mlInsights        MlPredictiveInsight[]
-  telemetries       SmartwatchDailyTelemetry[]
+  anamnesis           Anamnesis?
+  subscription        Subscription?
+
+  clientPlans         Plan[]          @relation("ClientPlans")
+  nutriPlans          Plan[]          @relation("NutriPlans")
+  efiPlans            Plan[]          @relation("EfiPlans")
+
+  createdPlans        Plan[]          @relation("PlanCreator")
+  updatedPlans        Plan[]          @relation("PlanUpdater")
+
+  clientTickets       SupportTicket[] @relation("ClientTickets")
+  agentTickets        SupportTicket[] @relation("AgentTickets")
+
+  biometrics          BiometricHistory[]
+  workoutLogs         WorkoutExecutionLog[]
+  mlInsights          MlPredictiveInsight[]
+  telemetries         SmartwatchDailyTelemetry[]
 
   @@map("users")
 }
@@ -163,7 +180,7 @@ model Subscription {
 }
 
 // ==========================================
-// 3. MÓDULO DE ENTREGA DE PLANOS (DIETA + TREINO)
+// 3. PLANS (DIET + WORKOUT)
 // ==========================================
 
 model Plan {
@@ -181,10 +198,10 @@ model Plan {
   client      User       @relation("ClientPlans", fields: [clientId], references: [id], onDelete: Restrict)
   nutri       User?      @relation("NutriPlans", fields: [nutriId], references: [id], onDelete: SetNull)
   efi         User?      @relation("EfiPlans", fields: [efiId], references: [id], onDelete: SetNull)
-  
+
   createdBy   User?      @relation("PlanCreator", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy   User?      @relation("PlanUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
-  
+
   diets       Diet[]
   workouts    WorkoutRoutine[]
 
@@ -222,7 +239,7 @@ model WorkoutRoutine {
 }
 
 // ==========================================
-// 4. MÓDULO DE TELEMETRIA, IOT E EVOLUÇÃO (PILAR 2)
+// 4. TELEMETRY & EVOLUTION
 // ==========================================
 
 model BiometricHistory {
@@ -245,17 +262,17 @@ model BiometricHistory {
 }
 
 model SmartwatchDailyTelemetry {
-  id               String   @id @default(uuid())
-  userId           String   @map("user_id")
-  date             DateTime @db.Date
-  hrv              Int?
-  rhr              Int?
-  sleepMinutesTotal Int?    @map("sleep_minutes_total")
-  stepsCount       Int      @default(0) @map("steps_count")
-  activeCalories   Float    @default(0.0) @map("active_calories")
-  createdAt        DateTime @default(now()) @map("created_at")
+  id                String   @id @default(uuid())
+  userId            String   @map("user_id")
+  date              DateTime @db.Date
+  hrv               Int?
+  rhr               Int?
+  sleepMinutesTotal Int?     @map("sleep_minutes_total")
+  stepsCount        Int      @default(0) @map("steps_count")
+  activeCalories    Float    @default(0.0) @map("active_calories")
+  createdAt         DateTime @default(now()) @map("created_at")
 
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
   @@index([userId, date])
@@ -273,7 +290,7 @@ model WorkoutExecutionLog {
   metCalculatedCalories Float    @map("met_calculated_calories")
   rawData               Json     @map("raw_data")
   executedAt            DateTime @map("executed_at")
-    createdAt             DateTime @default(now()) @map("created_at")
+  createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -283,7 +300,7 @@ model WorkoutExecutionLog {
 }
 
 // ==========================================
-// 5. INTELIGÊNCIA ARTIFICIAL E SUPORTE (HELPDESK OTIMIZADO)
+// 5. AI & SUPPORT (HELPDESK)
 // ==========================================
 
 enum TicketStatus {
@@ -293,21 +310,21 @@ enum TicketStatus {
 }
 
 enum TicketCategory {
-  CRITICAL    // 🚨 SLA Curto (ex: 4h) - Dor, Risco de Churn
-  ATTENTION   // 🟡 SLA Médio (ex: 12h) - Avaliar anamnese, Ajuste de Dieta
-  ROUTINE     // 🟢 SLA Longo (ex: 48h) - Dúvidas gerais
+  CRITICAL    // 🚨 Short SLA (e.g., 4h) - Pain, Churn Risk
+  ATTENTION   // 🟡 Medium SLA (e.g., 12h) - Anamnesis review, Diet adjustment
+  ROUTINE     // 🟢 Long SLA (e.g., 48h) - General questions
 }
 
 model SupportTicket {
   id           String         @id @default(uuid())
   clientId     String         @map("client_id")
-  agentId      String?        @map("agent_id") // Quem está atendendo
-  title        String         // Resumo da notificação
-  description  String         @db.Text // Relato completo do paciente ou IA
-  answer       String?        @db.Text // Resposta do profissional
+  agentId      String?        @map("agent_id")
+  title        String
+  description  String         @db.Text
+  answer       String?        @db.Text
   category     TicketCategory @default(ROUTINE)
   status       TicketStatus   @default(OPEN)
-  slaExpiresAt DateTime       @map("sla_expires_at") // O Motor do SLA
+  slaExpiresAt DateTime       @map("sla_expires_at")
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
@@ -337,4 +354,3 @@ model MlPredictiveInsight {
   @@index([userId, isActive])
   @@map("ml_predictive_insights")
 }
-

@@ -1,4 +1,3 @@
-
 import type { FastifyInstance } from 'fastify';
 
 import { OnboardingController } from '../controllers/OnboardingController.js';
@@ -7,6 +6,7 @@ import { AllowCpfByAdminController } from '../controllers/AllowCpfByAdminControl
 import { GetClientAnamnesisController } from '../controllers/GetClientAnamnesisController.js';
 
 import { CreateOnboardingController } from '../../controllers/CreateOnboardingController.js';
+import { CompleteBasicProfileController } from '../../controllers/CompleteBasicProfileController.js';
 import { CreateProfessionalByAdminController } from '../../controllers/CreateProfessionalByAdminController.js';
 
 import { CreateDietPrescriptionController } from '../../../plans/controllers/CreateDietPrescriptionController.js';
@@ -17,23 +17,30 @@ import { ensureRole } from '../../../../shared/infra/http/middlewares/ensureRole
 export async function onboardingRouter(
   app: FastifyInstance,
 ): Promise<void> {
-  const onboardingController = new OnboardingController();
-  const adminController = new AdminController();
+  const onboardingController =
+    new OnboardingController();
+
+  const adminController =
+    new AdminController();
+
   const createOnboardingController =
     new CreateOnboardingController();
+
+  const completeBasicProfileController =
+    new CompleteBasicProfileController();
+
   const createProfessionalController =
     new CreateProfessionalByAdminController();
+
   const allowCpfController =
     new AllowCpfByAdminController();
+
   const getClientAnamnesisController =
     new GetClientAnamnesisController();
+
   const createDietPrescriptionController =
     new CreateDietPrescriptionController();
 
-  /**
-   * Rota pública utilizada para concluir um cadastro
-   * previamente autorizado.
-   */
   app.post(
     '/register',
     {
@@ -47,10 +54,15 @@ export async function onboardingRouter(
     onboardingController.complete,
   );
 
-  /**
-   * Cliente autenticado envia ou atualiza a própria
-   * anamnese.
-   */
+  app.patch(
+    '/basic-profile',
+    {
+      onRequest: [ensureAuthenticated],
+      preHandler: [ensureRole(['CLIENT'])],
+    },
+    completeBasicProfileController.handle,
+  );
+
   app.post(
     '/anamnesis',
     {
@@ -60,9 +72,6 @@ export async function onboardingRouter(
     createOnboardingController.handle,
   );
 
-  /**
-   * Administrador altera a role de um usuário.
-   */
   app.patch(
     '/admin/change-role',
     {
@@ -72,9 +81,6 @@ export async function onboardingRouter(
     adminController.changeRole,
   );
 
-  /**
-   * Administrador cria profissionais da plataforma.
-   */
   app.post(
     '/professionals',
     {
@@ -84,9 +90,6 @@ export async function onboardingRouter(
     createProfessionalController.handle,
   );
 
-  /**
-   * Administrador autoriza um CPF para cadastro.
-   */
   app.post(
     '/allow-cpf',
     {
@@ -96,10 +99,6 @@ export async function onboardingRouter(
     allowCpfController.handle,
   );
 
-  /**
-   * Profissionais autorizados consultam a anamnese
-   * de um cliente específico.
-   */
   app.get(
     '/anamnesis/:userId',
     {
@@ -111,9 +110,6 @@ export async function onboardingRouter(
     getClientAnamnesisController.handle,
   );
 
-  /**
-   * Apenas nutricionistas podem prescrever dietas.
-   */
   app.post(
     '/prescribe-diet',
     {
@@ -123,4 +119,3 @@ export async function onboardingRouter(
     createDietPrescriptionController.handle,
   );
 }
-
